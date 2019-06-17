@@ -1,0 +1,221 @@
+
+/** ** Process algebra */
+
+domain Proc[T] {
+	function Pepsilon(): Proc[T]
+	function Pdelta(): Proc[T]
+	function Pseq(P: Proc[T], Q: Proc[T]): Proc[T]
+	function Palt(P: Proc[T], Q: Proc[T]): Proc[T]
+	function Ppar(P: Proc[T], Q: Proc[T]): Proc[T]
+	function Psend(e: T, tag: Int): Proc[T]
+	function Precv(e: T, tag: Int): Proc[T]
+	function Passn(b: Bool): Proc[T]
+
+	function Psum1(): Proc[T] // generated
+	function Psum2(): Proc[T] // generated
+	function Psum3(): Proc[T] // generated
+
+	axiom pseq_epsilon_l {
+		forall P: Proc[T] :: { Pseq(P, Pepsilon()) } Pseq(P, Pepsilon()) == P
+	}
+
+	axiom pseq_epsilon_r {
+		forall P: Proc[T] :: { Pseq(Pepsilon(), P) } Pseq(Pepsilon(), P) == P
+	}
+
+	axiom ppar_epsilon_l {
+		forall P: Proc[T] :: { Ppar(P, Pepsilon()) } Ppar(P, Pepsilon()) == P
+	}
+
+	axiom ppar_epsilon_r {
+		forall P: Proc[T] :: { Ppar(Pepsilon(), P) } Ppar(Pepsilon(), P) == P
+	}
+}
+
+
+/** ** Process predicates */
+
+predicate Process(q: Perm, P: Proc[Seq[Int]])
+
+method Process_split(p: Perm, q: Perm, P: Proc[Seq[Int]], Q: Proc[Seq[Int]])
+	requires Process(p + q, Ppar(P, Q))
+	ensures Process(p, P) && Process(q, Q)
+
+method Process_merge(p: Perm, q: Perm, P: Proc[Seq[Int]], Q: Proc[Seq[Int]])
+	requires Process(p, P) && Process(q, Q)
+	ensures Process(p + q, Ppar(P, Q))
+
+method Process_assn(q: Perm, P: Proc[Seq[Int]], b: Bool)
+	requires Process(q, Pseq(Passn(b), P))
+	ensures Process(q, P) && b
+
+ // generated
+method Psum1_unfold(q: Perm, xs: Seq[Int])
+	requires Process(q, Psum1())
+	ensures Process(q,
+		Palt(
+			Pseq(
+				Precv(xs, 2),
+				Passn(xs == Seq(4, 5, 6, 7, 8))
+			),
+			Psum1()
+		)
+	)
+
+// generated
+method Psum2_unfold(q: Perm, ys: Seq[Int], tag: Int)
+	requires Process(q, Psum2())
+	ensures Process(q,
+		Palt(
+			Pseq(
+				Precv(ys, tag),
+				tag == 1 ?
+					Pseq(Psend(ys ++ Seq(8, 6), 3), Psum2()) :
+					Pseq(Psend(ys, 2), Psum2())
+			),
+			Psum2()
+		)
+	)
+
+// generated
+method Psum3_unfold(q: Perm, zs: Seq[Int], tag: Int)
+	requires Process(q, Psum3())
+	ensures Process(q,
+		Palt(
+			Pseq(
+				Precv(zs, tag),
+				Pseq(
+					Psend(sort(zs), tag),
+					Psum3()
+				)
+			),
+			Psum3()
+		)
+	)
+
+// generated
+function P1(): Proc[Seq[Int]] {
+	Pseq(
+		Psend(Seq(4, 7, 5), 1),
+		Psum1()
+	)
+}
+
+// generated
+function P2(): Proc[Seq[Int]] {
+	Psum2()
+}
+
+// generated
+function P3(): Proc[Seq[Int]] {
+	Psum3()
+}
+
+/** ** Message passing primitives */
+
+method mpi_send(xs: Seq[Int], tag: Int, q: Perm, P: Proc[Seq[Int]])
+	requires q != none
+	requires Process(q, Pseq(Psend(xs, tag), P))
+	ensures Process(q, P)
+
+// generated
+method mpi_recv_1(q: Perm) returns (xs: Seq[Int])
+	requires q != none
+	requires Process(q, Psum1())
+	ensures Process(q, Passn(xs == Seq(4, 5, 6, 7, 8)))
+
+// generated
+method mpi_recv_2(q: Perm) returns (xs: Seq[Int], tag: Int)
+	requires q != none
+	requires Process(q, Psum2())
+	ensures Process(q, tag == 1 ? Pseq(Psend(xs ++ Seq(8, 6), 3), Psum2()) : Pseq(Psend(xs, 2), Psum2()))
+
+// generated
+method mpi_recv_3(q: Perm) returns (xs: Seq[Int], tag: Int)
+	requires q != none
+	requires Process(q, Psum3())
+	ensures Process(q, Pseq(Psend(sort(xs), tag), Psum3()))
+
+/** ** Implementation */
+
+function isSorted(xs: Seq[Int]): Bool {
+	forall i: Int, j: Int :: 0 <= i && i < j && j < |xs| ==> xs[i] <= xs[j]
+}
+
+function asMultiset(xs: Seq[Int]): Multiset[Int] {
+	0 < |xs| ? Multiset(xs[0]) union asMultiset(xs[1..]) : Multiset()
+}
+
+function sort(xs: Seq[Int]): Seq[Int]
+	ensures |result| == |xs|
+	ensures asMultiset(result) == asMultiset(xs)
+	ensures forall i: Int, j: Int :: 0 <= i && i < j && j < |result| ==> result[i] <= result[j]
+
+method ParSort(xs: Seq[Int]) returns (res: Seq[Int])
+	ensures res == sort(xs)
+
+method Worker1()
+	requires Process(1/3, P1())
+	ensures Process(1/3, Pepsilon())
+{
+	var xs: Seq[Int]
+
+	mpi_send(Seq(4, 7, 5), 1, 1/3, Psum1())
+	xs := mpi_recv_1(1/3)
+	Process_assn(1/3, Pepsilon(), xs == Seq(4, 5, 6, 7, 8))
+
+	assert xs == Seq(4, 5, 6, 7, 8)
+}
+
+method Worker2()
+	requires Process(1/3, P2())
+	ensures false
+{
+	var ys: Seq[Int]
+	var t: Int
+
+	while (true)
+		invariant Process(1/3, Psum2())
+	{
+		ys, t := mpi_recv_2(1/3)
+
+		if (t == 1) {
+			mpi_send(ys ++ Seq(8, 6), 3, 1/3, Psum2()) 
+		}
+		else {
+			mpi_send(ys, 2, 1/3, Psum2())
+		}
+	}
+}
+
+method Worker3()
+	requires Process(1/3, P3())
+	ensures false
+{
+	var zs1: Seq[Int]
+	var zs2: Seq[Int]
+	var t: Int
+
+	while (true)
+		invariant Process(1/3, Psum3())
+	{
+		zs1, t := mpi_recv_3(1/3)
+		zs2 := ParSort(zs1)
+		mpi_send(zs2, t, 1/3, Psum3())
+	}
+}
+
+method Main()
+	requires Process(write, Ppar(P1(), Ppar(P2(), P3())))
+	ensures false
+{
+	Process_split(1/3, 2/3, P1(), Ppar(P2(), P3()))
+	Process_split(1/3, 1/3, P2(), P3())
+
+	exhale Process(1/3, P1()) // `fork Worker1()`
+	exhale Process(1/3, P2()) // `fork Worker2()`
+	exhale Process(1/3, P3()) // `fork Worker3()`
+	inhale Process(1/3, Pepsilon()) // `join Worker1()`
+	inhale false // `join Worker2()`, which gives `false`, since `Worker2` never terminates
+	inhale false // `join Worker3()`, which gives `false`, since `Worker2` never terminates
+}

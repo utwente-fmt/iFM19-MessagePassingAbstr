@@ -1,0 +1,2 @@
+% there exists no path that contains the `check(false)` action.
+[true* . check(false)]false

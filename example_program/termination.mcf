@@ -1,0 +1,2 @@
+% there exists an infinite sequence of exchange actions (i.e. actions other than `check(true)`).
+nu X . <!check(true)>X

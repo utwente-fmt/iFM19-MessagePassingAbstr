@@ -1,0 +1,41 @@
+% merges two sorted sequence into a single sorted sequence
+map Merge: List(Nat) # List(Nat) -> List(Nat);
+var x: Nat, y: Nat, xs: List(Nat), ys: List(Nat);
+eqn Merge([], []) = [];
+		Merge(xs, []) = xs;
+		Merge([], xs) = xs;
+		x <= y -> Merge(x |> xs, y |> ys) = x |> Merge(xs, y |> ys);
+		y < x -> Merge(x |> xs, y |> ys) = y |> Merge(x |> xs, ys);
+
+% sorts a given sequence of natural numbers
+map Sort: List(Nat) -> List(Nat);
+var x: Nat, xs: List(Nat);
+eqn Sort([]) = [];
+		Sort([x]) = [x];
+		Sort(x |> xs) = Merge([x], Sort(xs));
+
+act
+	send, recv, exchange: List(Nat) # Nat;
+	check: Bool;
+
+proc
+	T1 =
+		send([4,7,5], 1) .
+		sum xs: List(Nat) . recv(xs, 2) .
+		check(xs == [4,5,6,7,8]);
+	
+	T2 =
+		sum ys: List(Nat), t: Nat . recv(ys, t) .
+		((t == 1) -> send(ys ++ [8,6], 3) <> send(ys, 2)) .
+		T2;
+	
+	T3 =
+		sum zs: List(Nat), t: Nat. recv(zs, t) .
+		send(Sort(zs), t) .
+		T3;
+
+init allow({exchange, check},
+	comm({send|recv -> exchange},
+		T1() || T2() || T3()
+	)
+);
